@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import youtube_dl
-import pydub
+import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -22,10 +22,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if 'entries' in data:
             data = data['entries'][0]
         filename = data['url'] if stream else youtube_dl.utils.sanitize_filename(data['title'], None) + '.mp3'
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename), data=data)
 
 @bot.command()
 async def play(ctx, *, query):
+    loop = asyncio.get_event_loop()
     async with ctx.typing():
         query_parts = query.split(' - ')
         if len(query_parts) == 1:
@@ -36,12 +37,15 @@ async def play(ctx, *, query):
             artist, song = query_parts
             search_query = f'{artist} - {song} lyrics'
         ydl_opts = {"format": "bestaudio", "extractaudio": True, "audioformat": "mp3", "outtmpl": "%(extract)s.%(ext)s", "noplaylist": True, "default_search": "ytsearch"}
-        data = await loop.run_in_executor(None, lambda: youtube_dl.YoutubeDL(ydl_opts).extract_info(search_query, download=False))
-        if 'entries' in data:
-            data = data['entries'][0]
-        player = await YTDLSource.from_url(data['webpage_url'], loop=bot.loop)
-        ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
-        await ctx.send(f'Now playing: {player.title}')
+        try:
+            data = await loop.run_in_executor(None, lambda: youtube_dl.YoutubeDL(ydl_opts).extract_info(search_query, download=False))
+            if 'entries' in data:
+                data = data['entries'][0]
+            player = await YTDLSource.from_url(data['webpage_url'], loop=bot.loop)
+            ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
+            await ctx.send(f'Now playing: {player.title}')
+        except youtube_dl.utils.DownloadError as e:
+            await ctx.send(f'Error: {e}')
 
 @bot.command()
 async def join(ctx):
@@ -59,4 +63,4 @@ async def leave(ctx):
     else:
         await ctx.send("I am not connected to a voice channel.")
 
-bot.run('MTIzMjU3MTY0NTkyODE0OTA3Mw.GbfoM7.i0seGBvX0K-aTibBN1lJ-SCRZCHkRCmocF2Y6M')
+bot.run("YOUR_TOKEN")
